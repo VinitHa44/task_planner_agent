@@ -4,9 +4,7 @@ import { Button } from "@/components/ui/button";
 import { 
   Calendar, 
   Clock, 
-  MapPin, 
-  CheckCircle2, 
-  Circle,
+  MapPin,
   Cloud,
   Sun,
   CloudRain,
@@ -17,7 +15,6 @@ import { DisplayPlan, DisplayTask, DisplayDay } from "@/types/api";
 
 interface PlanDisplayProps {
   plan: DisplayPlan;
-  onTaskToggle?: (dayIndex: number, taskId: string) => void;
 }
 
 const WeatherIcon = ({ condition }: { condition: string }) => {
@@ -41,7 +38,7 @@ const WeatherIcon = ({ condition }: { condition: string }) => {
   }
 };
 
-export const PlanDisplay = ({ plan, onTaskToggle }: PlanDisplayProps) => {
+export const PlanDisplay = ({ plan }: PlanDisplayProps) => {
   const [expandedDays, setExpandedDays] = useState<Set<number>>(new Set([0]));
 
   const toggleDay = (dayIndex: number) => {
@@ -52,12 +49,6 @@ export const PlanDisplay = ({ plan, onTaskToggle }: PlanDisplayProps) => {
       newExpanded.add(dayIndex);
     }
     setExpandedDays(newExpanded);
-  };
-
-  const handleTaskToggle = (dayIndex: number, taskId: string) => {
-    if (onTaskToggle) {
-      onTaskToggle(dayIndex, taskId);
-    }
   };
 
   return (
@@ -101,11 +92,21 @@ export const PlanDisplay = ({ plan, onTaskToggle }: PlanDisplayProps) => {
                       {day.dayOfWeek}
                     </h3>
                     <p className="text-sm text-muted-foreground">
-                      {new Date(day.date).toLocaleDateString('en-US', {
-                        month: 'long',
-                        day: 'numeric',
-                        year: 'numeric'
-                      })}
+                      {(() => {
+                        try {
+                          const date = new Date(day.date);
+                          if (isNaN(date.getTime())) {
+                            return day.date; // Fallback to raw date string
+                          }
+                          return date.toLocaleDateString('en-US', {
+                            month: 'long',
+                            day: 'numeric',
+                            year: 'numeric'
+                          });
+                        } catch (error) {
+                          return day.date; // Fallback to raw date string
+                        }
+                      })()}
                     </p>
                   </div>
                 </div>
@@ -131,22 +132,9 @@ export const PlanDisplay = ({ plan, onTaskToggle }: PlanDisplayProps) => {
                   {day.tasks.map((task, taskIndex) => (
                     <div key={task.id} className="task-card rounded-xl p-4">
                       <div className="flex items-start gap-4">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="mt-1 p-0 h-6 w-6"
-                          onClick={() => handleTaskToggle(dayIndex, task.id)}
-                        >
-                          {task.completed ? (
-                            <CheckCircle2 className="w-5 h-5 text-success" />
-                          ) : (
-                            <Circle className="w-5 h-5 text-muted-foreground" />
-                          )}
-                        </Button>
-                        
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between gap-4 mb-2">
-                            <h4 className={`font-semibold ${task.completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                            <h4 className="font-semibold text-foreground">
                               {task.title}
                             </h4>
                             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -162,7 +150,7 @@ export const PlanDisplay = ({ plan, onTaskToggle }: PlanDisplayProps) => {
                             </div>
                           </div>
                           
-                          <p className={`text-sm mb-2 ${task.completed ? 'line-through text-muted-foreground' : 'text-muted-foreground'}`}>
+                          <p className="text-sm mb-2 text-muted-foreground">
                             {task.description}
                           </p>
                           

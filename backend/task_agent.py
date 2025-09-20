@@ -3,6 +3,8 @@ import os
 from typing import List, Dict, Any
 import json
 from bson import ObjectId
+from datetime import datetime, timedelta
+import re
 from external_apis import WeatherAPI, WebSearchAPI
 from models import Plan, Day, Task, TaskStatus
 
@@ -14,20 +16,91 @@ class TaskPlanningAgent:
         self.weather_api = WeatherAPI()
         self.web_search = WebSearchAPI()
     
+    def _extract_start_date(self, goal: str) -> datetime:
+        """Extract start date from goal text or use smart defaults"""
+        goal_lower = goal.lower()
+        today = datetime.now()
+        
+        # Look for specific date patterns
+        # Pattern: "next week" - start on next Monday
+        if "next week" in goal_lower:
+            days_until_monday = (7 - today.weekday()) % 7
+            if days_until_monday == 0:  # If today is Monday, go to next Monday
+                days_until_monday = 7
+            return today + timedelta(days=days_until_monday)
+        
+        # Pattern: "this weekend" - start on next Saturday
+        if "this weekend" in goal_lower or "weekend" in goal_lower:
+            days_until_saturday = (5 - today.weekday()) % 7
+            if days_until_saturday == 0 and today.weekday() == 5:  # If today is Saturday
+                return today
+            elif days_until_saturday == 0:  # If past Saturday, go to next Saturday
+                days_until_saturday = 6
+            return today + timedelta(days=days_until_saturday)
+        
+        # Pattern: "tomorrow"
+        if "tomorrow" in goal_lower:
+            return today + timedelta(days=1)
+        
+        # Pattern: "today"
+        if "today" in goal_lower:
+            return today
+        
+        # Pattern: specific month names
+        month_patterns = {
+            "january": 1, "february": 2, "march": 3, "april": 4,
+            "may": 5, "june": 6, "july": 7, "august": 8,
+            "september": 9, "october": 10, "november": 11, "december": 12
+        }
+        
+        for month_name, month_num in month_patterns.items():
+            if month_name in goal_lower:
+                # If the month is in the past this year, assume next year
+                if month_num < today.month:
+                    return datetime(today.year + 1, month_num, 1)
+                else:
+                    return datetime(today.year, month_num, 1)
+        
+        # Pattern: "in X days"
+        days_pattern = re.search(r'in (\d+) days?', goal_lower)
+        if days_pattern:
+            days = int(days_pattern.group(1))
+            return today + timedelta(days=days)
+        
+        # Pattern: "X days from now"
+        days_from_pattern = re.search(r'(\d+) days? from now', goal_lower)
+        if days_from_pattern:
+            days = int(days_from_pattern.group(1))
+            return today + timedelta(days=days)
+        
+        # Default: if no specific date mentioned, assume they want to start soon
+        # For trips, start on the next weekend (Saturday)
+        if any(word in goal_lower for word in ["trip", "travel", "visit", "tour", "vacation"]):
+            days_until_saturday = (5 - today.weekday()) % 7
+            if days_until_saturday <= 1:  # If it's Friday or Saturday, go to next Saturday
+                days_until_saturday += 7
+            return today + timedelta(days=days_until_saturday)
+        
+        # For other goals, start tomorrow
+        return today + timedelta(days=1)
+
     async def generate_plan(self, goal: str, description: str = None) -> Plan:
         """Generate a comprehensive task plan from a natural language goal"""
         
-        # Step 1: Extract key information from the goal
+        # Step 1: Extract start date from the goal
+        start_date = self._extract_start_date(goal)
+        
+        # Step 2: Extract key information from the goal
         extracted_info = await self._extract_goal_info(goal)
         
-        # Step 2: Gather external information
+        # Step 3: Gather external information
         external_info = await self._gather_external_info(extracted_info)
         
-        # Step 3: Generate the plan using Gemini
-        plan_data = await self._generate_plan_with_gemini(goal, description, extracted_info, external_info)
+        # Step 4: Generate the plan using Gemini
+        plan_data = await self._generate_plan_with_gemini(goal, description, extracted_info, external_info, start_date)
         
-        # Step 4: Enrich tasks with external information
-        enriched_plan = await self._enrich_plan_with_external_data(plan_data, external_info)
+        # Step 5: Enrich tasks with external information
+        enriched_plan = await self._enrich_plan_with_external_data(plan_data, external_info, goal)
         
         return enriched_plan
     
@@ -45,7 +118,7 @@ class TaskPlanningAgent:
         - budget_considerations (if mentioned)
         - time_of_year (if mentioned)
         
-        Return only valid JSON.
+        Return only valid JSON. Use empty strings for missing text fields and empty arrays for missing list fields.
         """
         
         try:
@@ -70,7 +143,18 @@ class TaskPlanningAgent:
             
             print(f"Cleaned text: '{clean_text[:100]}...'")
             extracted = json.loads(clean_text)
-            return extracted
+            
+            # Clean up null values and ensure proper types
+            cleaned_extracted = {
+                "destination": extracted.get("destination") or "",
+                "duration": extracted.get("duration") or 1,
+                "activities": extracted.get("activities") or [],
+                "preferences": extracted.get("preferences") or [],
+                "budget_considerations": extracted.get("budget_considerations") or "",
+                "time_of_year": extracted.get("time_of_year") or ""
+            }
+            
+            return cleaned_extracted
         except Exception as e:
             print(f"Error extracting goal info: {e}")
             print(f"Response was: {getattr(response, 'text', 'No response object')}")
@@ -92,8 +176,11 @@ class TaskPlanningAgent:
             search_queries.append(f"best places to visit in {extracted_info['destination']}")
             search_queries.append(f"restaurants in {extracted_info['destination']}")
         
-        for activity in extracted_info.get("activities", []):
-            search_queries.append(f"{activity} in {extracted_info.get('destination', '')}")
+        # Handle activities safely - ensure it's a list
+        activities = extracted_info.get("activities", [])
+        if activities and isinstance(activities, list):  # Only iterate if activities is a non-empty list
+            for activity in activities:
+                search_queries.append(f"{activity} in {extracted_info.get('destination', '')}")
         
         search_results = {}
         for query in search_queries[:3]:  # Limit to 3 searches
@@ -249,7 +336,7 @@ class TaskPlanningAgent:
                 "days": []
             }
     
-    async def _enrich_plan_with_external_data(self, plan_data: Dict[str, Any], external_info: Dict[str, Any]) -> Plan:
+    async def _enrich_plan_with_external_data(self, plan_data: Dict[str, Any], external_info: Dict[str, Any], goal: str) -> Plan:
         """Enrich the plan with external information"""
         
         # Convert to our Plan model
@@ -278,7 +365,7 @@ class TaskPlanningAgent:
         
         plan = Plan(
             id=str(ObjectId()),  # Generate a proper ID for the plan
-            goal=plan_data.get("description", ""),
+            goal=goal,  # Use the original goal parameter
             description=plan_data.get("description", ""),
             days=days,
             total_duration=plan_data.get("total_duration", "1 day")

@@ -83,27 +83,6 @@ const Index = () => {
     }
   };
 
-  const handleTaskToggle = async (dayIndex: number, taskId: string) => {
-    if (!currentPlan) return;
-    
-    const updatedPlan = { ...currentPlan };
-    const task = updatedPlan.days[dayIndex].tasks.find(t => t.id === taskId);
-    if (task) {
-      task.completed = !task.completed;
-      task.status = task.completed ? 'completed' : 'pending';
-      setCurrentPlan(updatedPlan);
-      
-      // TODO: Update task status in backend
-      // For now, just update locally
-      
-      toast({
-        title: task.completed ? "Task Completed!" : "Task Unmarked",
-        description: task.title,
-        duration: 2000
-      });
-    }
-  };
-
   const handleViewPlan = async (planId: string) => {
     try {
       const planResponse = await apiService.getPlan(planId);
@@ -144,7 +123,7 @@ const Index = () => {
           {loading ? (
             <LoadingState stage={loadingStage} />
           ) : currentPlan ? (
-            <PlanDisplay plan={currentPlan} onTaskToggle={handleTaskToggle} />
+            <PlanDisplay plan={currentPlan} />
           ) : (
             <GoalInput onSubmit={handleGoalSubmit} loading={loading} />
           )}

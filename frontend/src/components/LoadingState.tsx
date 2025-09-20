@@ -50,33 +50,6 @@ export const LoadingState = ({ stage = 'analyzing' }: LoadingStateProps) => {
         </p>
       </div>
 
-      {/* Loading Progress */}
-      <div className="mb-8">
-        <div className="flex justify-between items-center mb-2">
-          {Object.entries(stages).map(([key, { icon: StageIcon, title }], index) => {
-            const isActive = key === stage;
-            const isCompleted = Object.keys(stages).indexOf(key) < Object.keys(stages).indexOf(stage);
-            
-            return (
-              <div key={key} className="flex items-center">
-                <div className={`flex items-center justify-center w-10 h-10 rounded-full transition-all ${
-                  isActive ? 'bg-primary text-primary-foreground scale-110' :
-                  isCompleted ? 'bg-success text-success-foreground' :
-                  'bg-muted text-muted-foreground'
-                }`}>
-                  <StageIcon className="w-5 h-5" />
-                </div>
-                {index < Object.keys(stages).length - 1 && (
-                  <div className={`w-16 h-1 mx-2 rounded-full ${
-                    isCompleted ? 'bg-success' : 'bg-muted'
-                  }`} />
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
       {/* Loading Cards */}
       <div className="space-y-6">
         {[1, 2, 3].map((day) => (

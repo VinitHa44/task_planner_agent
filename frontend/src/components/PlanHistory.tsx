@@ -18,8 +18,6 @@ interface PlanSummary {
   description: string;
   dayCount: number;
   createdAt: string;
-  completedTasks?: number;
-  totalTasks?: number;
 }
 
 interface PlanHistoryProps {
@@ -37,11 +35,19 @@ export const PlanHistory = ({ plans, onViewPlan, onDeletePlan }: PlanHistoryProp
   );
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    });
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) {
+        return 'Invalid Date';
+      }
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+      });
+    } catch (error) {
+      return 'Invalid Date';
+    }
   };
 
   if (plans.length === 0) {
@@ -129,31 +135,7 @@ export const PlanHistory = ({ plans, onViewPlan, onDeletePlan }: PlanHistoryProp
                   <Clock className="w-4 h-4" />
                   {formatDate(plan.createdAt)}
                 </div>
-                {plan.totalTasks && (
-                  <div className="flex items-center gap-1">
-                    <MapPin className="w-4 h-4" />
-                    {plan.completedTasks || 0}/{plan.totalTasks} tasks
-                  </div>
-                )}
               </div>
-
-              {/* Progress */}
-              {plan.totalTasks && plan.totalTasks > 0 && (
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Progress</span>
-                    <span className="text-muted-foreground">
-                      {Math.round(((plan.completedTasks || 0) / plan.totalTasks) * 100)}%
-                    </span>
-                  </div>
-                  <div className="w-full bg-muted rounded-full h-2">
-                    <div 
-                      className="bg-gradient-to-r from-primary to-secondary h-2 rounded-full transition-all duration-300"
-                      style={{ width: `${Math.round(((plan.completedTasks || 0) / plan.totalTasks) * 100)}%` }}
-                    />
-                  </div>
-                </div>
-              )}
 
               {/* Action */}
               <div className="pt-2">

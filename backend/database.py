@@ -45,27 +45,35 @@ class Database:
     
     def _clean_plan_data(self, plan_data):
         """Clean up plan data to match our Pydantic models"""
-        # Ensure id is always a valid string
-        if "id" not in plan_data or plan_data.get("id") is None:
-            if "_id" in plan_data:
-                plan_data["id"] = str(plan_data["_id"])
-            else:
-                plan_data["id"] = str(ObjectId())
+        from bson import ObjectId
         
-        # Clean up days
+        # Ensure id is always a valid string - convert from _id
+        if "_id" in plan_data:
+            plan_data["id"] = str(plan_data["_id"])
+            plan_data.pop("_id", None)  # Remove _id after converting
+        elif "id" not in plan_data or plan_data.get("id") is None:
+            plan_data["id"] = str(ObjectId())
+        
+        # Clean up days and tasks
         if "days" in plan_data:
             for day in plan_data["days"]:
                 if "tasks" in day:
                     for task in day["tasks"]:
-                        # Remove extra fields that our model doesn't expect
+                        # Ensure task has a valid ID
+                        if "id" not in task or task["id"] is None:
+                            task["id"] = str(ObjectId())
+                        
+                        # Remove extra fields that might cause issues
                         task.pop("created_at", None)
                         task.pop("external_info", None)
                         
                         # Ensure required fields exist
-                        if "id" not in task or task["id"] is None:
-                            task["id"] = str(ObjectId())
-                        if "description" not in task:
+                        if "description" not in task or not task["description"]:
                             task["description"] = task.get("title", "No description")
+                        
+                        # Ensure status is valid
+                        if "status" not in task:
+                            task["status"] = "pending"
         
         return plan_data
     
@@ -74,12 +82,6 @@ class Database:
         plans = []
         try:
             async for plan_data in self.plans.find().sort("created_at", -1):
-                # Handle both ObjectId and string _id formats
-                if "_id" in plan_data:
-                    plan_data["id"] = str(plan_data.pop("_id"))
-                else:
-                    plan_data["id"] = "unknown"
-                
                 # Clean up the data structure
                 plan_data = self._clean_plan_data(plan_data)
                 
@@ -93,7 +95,7 @@ class Database:
                     try:
                         # Create a minimal valid plan
                         minimal_plan = {
-                            "id": plan_data.get("id", "unknown"),
+                            "id": plan_data.get("id", str(ObjectId())),
                             "goal": plan_data.get("goal", "Unknown goal"),
                             "description": plan_data.get("description", "No description"),
                             "days": [],
@@ -103,8 +105,8 @@ class Database:
                             "status": plan_data.get("status", "active")
                         }
                         plans.append(Plan(**minimal_plan))
-                    except:
-                        print(f"Could not salvage plan, skipping...")
+                    except Exception as e2:
+                        print(f"Could not salvage plan: {e2}, skipping...")
                         continue
                     
         except Exception as e:

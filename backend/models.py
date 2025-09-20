@@ -9,7 +9,7 @@ class TaskStatus(str, Enum):
     COMPLETED = "completed"
 
 class Task(BaseModel):
-    id: Optional[str] = Field(None, alias="_id")
+    id: Optional[str] = None
     title: str
     description: str
     status: TaskStatus = TaskStatus.PENDING
@@ -25,7 +25,7 @@ class Day(BaseModel):
     weather_info: Optional[List[Dict[str, Any]]] = None
 
 class Plan(BaseModel):
-    id: Optional[str] = Field(None, alias="_id")
+    id: Optional[str] = None
     goal: str
     description: str
     days: List[Day]
