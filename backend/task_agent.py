@@ -3,8 +3,7 @@ import os
 from typing import List, Dict, Any
 import json
 from bson import ObjectId
-from datetime import datetime, timedelta
-import re
+from datetime import datetime
 from external_apis import WeatherAPI, WebSearchAPI
 from models import Plan, Day, Task, TaskStatus
 
@@ -16,90 +15,20 @@ class TaskPlanningAgent:
         self.weather_api = WeatherAPI()
         self.web_search = WebSearchAPI()
     
-    def _extract_start_date(self, goal: str) -> datetime:
-        """Extract start date from goal text or use smart defaults"""
-        goal_lower = goal.lower()
-        today = datetime.now()
-        
-        # Look for specific date patterns
-        # Pattern: "next week" - start on next Monday
-        if "next week" in goal_lower:
-            days_until_monday = (7 - today.weekday()) % 7
-            if days_until_monday == 0:  # If today is Monday, go to next Monday
-                days_until_monday = 7
-            return today + timedelta(days=days_until_monday)
-        
-        # Pattern: "this weekend" - start on next Saturday
-        if "this weekend" in goal_lower or "weekend" in goal_lower:
-            days_until_saturday = (5 - today.weekday()) % 7
-            if days_until_saturday == 0 and today.weekday() == 5:  # If today is Saturday
-                return today
-            elif days_until_saturday == 0:  # If past Saturday, go to next Saturday
-                days_until_saturday = 6
-            return today + timedelta(days=days_until_saturday)
-        
-        # Pattern: "tomorrow"
-        if "tomorrow" in goal_lower:
-            return today + timedelta(days=1)
-        
-        # Pattern: "today"
-        if "today" in goal_lower:
-            return today
-        
-        # Pattern: specific month names
-        month_patterns = {
-            "january": 1, "february": 2, "march": 3, "april": 4,
-            "may": 5, "june": 6, "july": 7, "august": 8,
-            "september": 9, "october": 10, "november": 11, "december": 12
-        }
-        
-        for month_name, month_num in month_patterns.items():
-            if month_name in goal_lower:
-                # If the month is in the past this year, assume next year
-                if month_num < today.month:
-                    return datetime(today.year + 1, month_num, 1)
-                else:
-                    return datetime(today.year, month_num, 1)
-        
-        # Pattern: "in X days"
-        days_pattern = re.search(r'in (\d+) days?', goal_lower)
-        if days_pattern:
-            days = int(days_pattern.group(1))
-            return today + timedelta(days=days)
-        
-        # Pattern: "X days from now"
-        days_from_pattern = re.search(r'(\d+) days? from now', goal_lower)
-        if days_from_pattern:
-            days = int(days_from_pattern.group(1))
-            return today + timedelta(days=days)
-        
-        # Default: if no specific date mentioned, assume they want to start soon
-        # For trips, start on the next weekend (Saturday)
-        if any(word in goal_lower for word in ["trip", "travel", "visit", "tour", "vacation"]):
-            days_until_saturday = (5 - today.weekday()) % 7
-            if days_until_saturday <= 1:  # If it's Friday or Saturday, go to next Saturday
-                days_until_saturday += 7
-            return today + timedelta(days=days_until_saturday)
-        
-        # For other goals, start tomorrow
-        return today + timedelta(days=1)
-
     async def generate_plan(self, goal: str, description: str = None) -> Plan:
         """Generate a comprehensive task plan from a natural language goal"""
         
-        # Step 1: Extract start date from the goal
-        start_date = self._extract_start_date(goal)
-        
-        # Step 2: Extract key information from the goal
+        # Step 1: Extract key information from the goal
         extracted_info = await self._extract_goal_info(goal)
         
-        # Step 3: Gather external information
+        # Step 2: Gather external information
         external_info = await self._gather_external_info(extracted_info)
         
-        # Step 4: Generate the plan using Gemini
-        plan_data = await self._generate_plan_with_gemini(goal, description, extracted_info, external_info, start_date)
+        # Step 3: Generate the plan using Gemini with today's date for context
+        today = datetime.now()
+        plan_data = await self._generate_plan_with_gemini(goal, description, extracted_info, external_info, today)
         
-        # Step 5: Enrich tasks with external information
+        # Step 4: Enrich tasks with external information
         enriched_plan = await self._enrich_plan_with_external_data(plan_data, external_info, goal)
         
         return enriched_plan
@@ -112,15 +41,32 @@ class TaskPlanningAgent:
         
         Extract:
         - destination (if travel-related)
-        - duration (number of days)
+        - duration (number of days as integer - if not explicitly mentioned, infer based on context):
+          * Weekend: 2-3 days (return 3)
+          * Week: 7 days (return 7)
+          * Quick/short: 1-2 days (return 2)
+          * Vacation/holiday: 5-7 days (return 7)
+          * Long/extended: 7+ days (return 7 or higher)
         - activities (list of main activities)
         - preferences (any specific preferences mentioned)
         - budget_considerations (if mentioned)
         - time_of_year (if mentioned)
         
+        DURATION INFERENCE RULES:
+        - If user mentions "weekend": return 3
+        - If user mentions "week": return 7
+        - If user mentions "quick", "short", "brief", "day trip": return 2
+        - If user mentions "vacation", "holiday", "getaway": return 7
+        - If user mentions "long", "extended", "comprehensive": return 10
+        - If user mentions specific numbers: use that exact number
+        - If user mentions relative dates like "next weekend", "next week": calculate appropriate duration
+        - If many activities mentioned: increase duration accordingly
+        - Default for unspecified trips: return 3
+        
         Return only valid JSON. Use empty strings for missing text fields and empty arrays for missing list fields.
         """
         
+        response = None  # Initialize response variable
         try:
             response = self.model.generate_content(prompt)
             print(f"Raw response: {response}")
@@ -129,7 +75,7 @@ class TaskPlanningAgent:
             
             if not response.text or response.text.strip() == "":
                 print("Empty response from Gemini API")
-                return {"destination": "", "duration": 1, "activities": [], "preferences": []}
+                return {"destination": "", "duration": 3, "activities": [], "preferences": [], "budget_considerations": "", "time_of_year": ""}
             
             # Clean the response text - remove markdown code blocks if present
             clean_text = response.text.strip()
@@ -144,10 +90,27 @@ class TaskPlanningAgent:
             print(f"Cleaned text: '{clean_text[:100]}...'")
             extracted = json.loads(clean_text)
             
-            # Clean up null values and ensure proper types
+            # Parse duration safely - handle both numbers and strings like "7+"
+            duration_value = extracted.get("duration", 3)
+            if isinstance(duration_value, str):
+                # Handle strings like "7+", "5-7", etc.
+                import re
+                # Extract the first number from the string
+                numbers = re.findall(r'\d+', str(duration_value))
+                if numbers:
+                    duration_value = int(numbers[0])
+                else:
+                    duration_value = 3  # Default fallback
+            elif not isinstance(duration_value, int):
+                duration_value = 3  # Default for any other type
+            
+            # Ensure minimum 1 day
+            duration_value = max(1, duration_value)
+            
+            # Clean up null values and ensure proper types with improved defaults
             cleaned_extracted = {
                 "destination": extracted.get("destination") or "",
-                "duration": extracted.get("duration") or 1,
+                "duration": duration_value,
                 "activities": extracted.get("activities") or [],
                 "preferences": extracted.get("preferences") or [],
                 "budget_considerations": extracted.get("budget_considerations") or "",
@@ -157,8 +120,8 @@ class TaskPlanningAgent:
             return cleaned_extracted
         except Exception as e:
             print(f"Error extracting goal info: {e}")
-            print(f"Response was: {getattr(response, 'text', 'No response object')}")
-            return {"destination": "", "duration": 1, "activities": [], "preferences": []}
+            print(f"Response was: {getattr(response, 'text', 'No response object') if response else 'No response object'}")
+            return {"destination": "", "duration": 3, "activities": [], "preferences": [], "budget_considerations": "", "time_of_year": ""}
     
     async def _gather_external_info(self, extracted_info: Dict[str, Any]) -> Dict[str, Any]:
         """Gather external information based on extracted goal info"""
@@ -191,13 +154,15 @@ class TaskPlanningAgent:
         
         return external_info
     
-    async def _generate_plan_with_gemini(self, goal: str, description: str, extracted_info: Dict[str, Any], external_info: Dict[str, Any]) -> Dict[str, Any]:
+    async def _generate_plan_with_gemini(self, goal: str, description: str, extracted_info: Dict[str, Any], external_info: Dict[str, Any], today: datetime) -> Dict[str, Any]:
         """Generate the main plan structure using Gemini"""
         
         # Prepare context for the LLM
+        today_str = today.strftime("%A, %B %d, %Y")
         context = f"""
         Goal: {goal}
         Description: {description or "No additional description provided"}
+        Today's Date: {today_str}
         
         Extracted Information:
         - Destination: {extracted_info.get('destination', 'Not specified')}
@@ -213,7 +178,17 @@ class TaskPlanningAgent:
         prompt = f"""
         {context}
         
-        Create a detailed day-by-day travel plan for this goal. Return a JSON structure with this format:
+        Create a detailed day-by-day travel plan for this goal. 
+        
+        IMPORTANT: Calculate the actual dates based on today's date ({today_str}) and the user's request in the goal. 
+        For example:
+        - "next week" means starting 7 days from today
+        - "next weekend" means the upcoming Saturday 
+        - "next to next weekend" means the Saturday after next weekend
+        - "tomorrow" means the day after today
+        - If no specific date is mentioned, assume they want to start in a few days to a week
+        
+        Return a JSON structure with this exact format:
         {{
             "description": "Brief description of the overall plan",
             "total_duration": "X days",
@@ -221,7 +196,7 @@ class TaskPlanningAgent:
                 {{
                     "day_number": 1,
                     "date": "YYYY-MM-DD",
-                    "summary": "Brief summary of the day",
+                    "summary": "Brief summary of day 1",
                     "tasks": [
                         {{
                             "title": "Task title",
@@ -231,7 +206,6 @@ class TaskPlanningAgent:
                         }}
                     ]
                 }}
-            ]
         }}
         
         🚨 CRITICAL TRAVEL PLANNING REQUIREMENTS:
@@ -281,20 +255,43 @@ class TaskPlanningAgent:
            - Plan lunch near midday attractions, dinner near evening locations
            - Include realistic time estimates including queue/waiting times
         
+        8. **INTELLIGENT ACTIVITY PLANNING BY TIME DURATION:**
+           - Plan activities based on how long each activity actually takes, not arbitrary daily limits
+           - Major attractions (museums, forts, palaces): 2-4 hours each
+           - Medium activities (markets, temples, gardens): 1-2 hours each
+           - Quick activities (cafes, viewpoints, short walks): 30min-1hr each
+           - Full day activities (safari, trekking, day tours): Entire day
+           - Calculate total time: Activities + Travel + Meals + Rest = Should not exceed 12-14 hours
+           - Example day: Major attraction (3hrs) + Travel (1hr) + Lunch (1hr) + Medium attraction (2hrs) + Travel (30min) + Quick cafe (1hr) + Dinner (1hr) = 9.5hrs ✅
+           - Bad example: 3 Major attractions (12hrs) + Travel (3hrs) + Meals (2hrs) = 17hrs ❌
+           - SMART LOGIC: If you plan 1 museum (3hrs), you still have 9-11 hours left for other activities
+           - SMART LOGIC: If you plan 3 museums (12hrs), you have no time left for anything else
+           - Include travel time between locations (30min-2hours depending on distance)
+           - Allow time for rest, meals, and unexpected delays
+           - Quality over quantity - better to enjoy fewer places than rush through many
+        
         EXAMPLE GOOD ROUTE: Hotel → Walk to nearby temple → Taxi to city palace (same area) → Lunch nearby → Afternoon visit to fort (farther) → Evening market (on way back) → Dinner near hotel
         
         EXAMPLE BAD ROUTE: Hotel → Far fort → Back to nearby temple → Far palace → Back to nearby market → Far restaurant
         
         Requirements:
         - Create exactly {extracted_info.get('duration', 1)} days
-        - Each day should have 4-7 tasks including meals and travel
+        - Plan activities based on realistic time requirements and do the math:
+          * Major attractions (museums, forts, palaces): 2-4 hours each
+          * Medium activities (markets, temples, gardens): 1-2 hours each  
+          * Quick activities (cafes, viewpoints): 30min-1hr each
+          * Full day activities (safari, trekking): Entire day
+        - Total daily time should not exceed 12-14 hours (including travel, meals, rest)
+        - USE MATH: Add up all activity durations + travel time + meal time = should fit in 12-14 hours
         - Include specific times, locations, and addresses when possible
         - Consider the activities and preferences mentioned
         - Make tasks actionable and specific with clear directions
-        - Include realistic travel times between locations
+        - Include realistic travel times between locations (30min-2hrs)
         - Optimize routes for minimal backtracking
         - Account for weather conditions and suggest alternatives
         - Prioritize arrival logistics and smart hotel location
+        - Focus on quality experiences over quantity of places
+        - LET THE TIME MATH DETERMINE NUMBER OF ACTIVITIES, NOT PRE-SET LIMITS
         
         Return only valid JSON.
         """
