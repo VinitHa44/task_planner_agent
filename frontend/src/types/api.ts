@@ -51,6 +51,15 @@ export interface WeatherInfo {
   condition: string;
   temperature: number;
   icon: string;
+  // Additional weather details
+  rainProbability?: number;
+  minTemp?: number;
+  maxTemp?: number;
+  humidity?: number;
+  windSpeed?: number;
+  description?: string;
+  weatherAdvisory?: string;
+  dataSource?: string;
 }
 
 export interface DisplayDay {
@@ -87,4 +96,17 @@ export interface ApiResponse<T> {
 
 export interface ApiError {
   detail: string;
+}
+
+// New structured error types
+export interface StructuredApiError {
+  type: string;
+  message: string;
+  technical_details?: string;
+  retry_after?: number;
+}
+
+export interface ApiErrorResponse {
+  error: StructuredApiError;
+  success: false;
 }

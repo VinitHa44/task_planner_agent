@@ -112,14 +112,37 @@ export const PlanDisplay = ({ plan }: PlanDisplayProps) => {
                 </div>
                 
                 {day.weather && (
-                  <div className="flex items-center gap-2 bg-muted rounded-lg px-3 py-2">
-                    <WeatherIcon condition={day.weather.condition} />
-                    <span className="text-sm font-medium">
-                      {day.weather.temperature}°C
-                    </span>
-                    <span className="text-xs text-muted-foreground capitalize">
-                      {day.weather.condition}
-                    </span>
+                  <div className="bg-muted rounded-lg px-3 py-2 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <WeatherIcon condition={day.weather.condition} />
+                      <span className="text-sm font-medium">
+                        {day.weather.temperature}°C
+                      </span>
+                      <span className="text-xs text-muted-foreground capitalize">
+                        {day.weather.condition}
+                      </span>
+                    </div>
+                    
+                    {/* Temperature range */}
+                    {day.weather.minTemp && day.weather.maxTemp && (
+                      <div className="text-xs text-muted-foreground">
+                        Range: {Math.round(day.weather.minTemp)}°C - {Math.round(day.weather.maxTemp)}°C
+                      </div>
+                    )}
+                    
+                    {/* Rain probability */}
+                    {day.weather.rainProbability !== undefined && (
+                      <div className="text-xs text-muted-foreground">
+                        🌧️ Rain: {day.weather.rainProbability}%
+                      </div>
+                    )}
+                    
+                    {/* Weather advisory */}
+                    {day.weather.weatherAdvisory && (
+                      <div className="text-xs text-orange-600 font-medium">
+                        ⚠️ {day.weather.weatherAdvisory}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
