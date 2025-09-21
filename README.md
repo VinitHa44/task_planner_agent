@@ -1,13 +1,14 @@
-# 🤖 AI Task Planning Agent(Reportify)
+# 🤖 AI Task Planning Agent
 
 An intelligent task planning system that converts natural language goals into structured, actionable travel plans with real-time weather data and external information enrichment using Google's Gemini AI.
 
 ![Python](https://img.shields.io/badge/Python-3.12+-blue.svg)
 ![FastAPI](https://img.shields.io/badge/FastAPI-Latest-green.svg)
 ![React](https://img.shields.io/badge/React-18+-blue.svg)
-![TypeScript](https://img.shields.i    
+![TypeScript](https://img.shields.io/badge/TypeScript-5+-blue.svg)
 
-## 🔍 Trip Logging Systemge/TypeScript-5+-blue.svg)
+
+## 🔍 Trip Logging System
 ![MongoDB](https://img.shields.io/badge/MongoDB-Latest-green.svg)
 
 ## 🌟 Features
@@ -104,6 +105,11 @@ source venv/bin/activate
 # Install dependencies
 pip install -r requirements.txt
 
+# Run with auto-reload (recommended for development)
+python main.py
+
+# Alternative: Run with uvicorn directly for more control
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 ```
 
