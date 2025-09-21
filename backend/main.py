@@ -3,6 +3,7 @@ Main application file for AI Task Planning Agent
 Implements FastAPI multi-layer architecture with clean separation of concerns
 """
 from contextlib import asynccontextmanager
+import os
 
 import uvicorn
 from fastapi import FastAPI
@@ -13,8 +14,9 @@ from config.database import db_manager
 from config.settings import settings
 from routers import plan_router, health_router
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from root directory
+env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
+load_dotenv(env_path)
 
 
 @asynccontextmanager
