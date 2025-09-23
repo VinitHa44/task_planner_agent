@@ -126,7 +126,7 @@ npm run dev
 ```
 
 ### 5. Access the Application
-- **Frontend**: http://localhost:5173
+- **Frontend**: http://localhost:8080
 - **Backend API**: http://localhost:8000
 - **API Documentation**: http://localhost:8000/docs
 
@@ -188,7 +188,7 @@ PORT=8000
 ## 🎯 Usage Examples
 
 ### Using the Frontend
-1. Open http://localhost:5173
+1. Open http://localhost:8080
 2. Enter a travel goal like: "Plan a 3-day trip to Jaipur with cultural highlights"
 3. Wait for AI to generate your personalized itinerary
 4. View detailed day-by-day plans with weather-optimized activities
@@ -571,14 +571,13 @@ npm run lint
 
 ## 🤖 AI Development Disclosure
 
-This project was developed with assistance from AI tools to enhance productivity and code quality. AI was used as a coding assistant to help implement features, suggest improvements, and solve technical challenges throughout the development process. The AI assistance included help with code structure, error handling patterns, logging implementation, performance optimizations, and frontend component design and user interface development.
+This project was developed with some assistance from AI tools to improve efficiency and code quality. AI was used as a coding assistant for tasks such as refining code structure, handling errors, suggesting logging approaches, performance optimizations, and frontend component design and user interface development.
 
 ### Human Oversight:
 - All AI-generated code was reviewed, tested, and modified by me
 - Business logic and architecture decisions were made by me
-- API integrations and external service configurations were manually implemented and tested
-- Security considerations and environment variable handling were human-verified
-- Frontend design patterns and component structure were human-reviewed and customized
+- API integrations and service configurations were manually developed and tested
+- Frontend design and component structures were customized and finalized by me
 
 ## 📄 License
 
